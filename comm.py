@@ -95,19 +95,23 @@ class CommNetMLP(nn.Module):
         
     def get_agent_mask(self, batch_size, info):
         n = self.nagents    # 10
-
         if 'alive_mask' in info:
             agent_mask = torch.from_numpy(info['alive_mask'])   # numpy --> tensor
-            agent_mask = self.channel.send(agent_mask)  # tensor --> tensor (after channel, few will survive)
-            num_agents_alive = agent_mask.sum()
+            dead_senter, who_sent, who_failed = self.channel.send(info['alive_mask'])
+            dead_senter = torch.from_numpy(dead_senter)
+            num_agents_alive = dead_senter.sum()
         else:
             agent_mask = torch.ones(n)
             num_agents_alive = n
+            dead_senter = torch.ones(n)
 
         agent_mask = agent_mask.view(1, 1, n)   # [1,1,10]
         agent_mask = agent_mask.expand(batch_size, n, n).unsqueeze(-1)  # [1,10,10,1]
 
-        return num_agents_alive, agent_mask
+        dead_senter = dead_senter.view(1, 1, n)   # [1,1,10]
+        dead_senter = dead_senter.expand(batch_size, n, n).unsqueeze(-1)  # [1,10,10,1]
+        
+        return num_agents_alive, agent_mask, dead_senter
 
     def forward_state_encoder(self, x):
         hidden_state, cell_state = None, None
@@ -162,7 +166,7 @@ class CommNetMLP(nn.Module):
         batch_size = x.size()[0]    # 1
         n = self.nagents    # 10
 
-        num_agents_alive, agent_mask = self.get_agent_mask(batch_size, info)
+        num_agents_alive, agent_mask, dead_senters = self.get_agent_mask(batch_size, info)
 
         # Hard Attention - action whether an agent communicates or not
         if self.args.hard_attn: # false
@@ -171,9 +175,11 @@ class CommNetMLP(nn.Module):
             # action 1 is talk, 0 is silent i.e. act as dead for comm purposes.
             agent_mask *= comm_action_mask.double()
 
-        agent_mask_transpose = agent_mask.transpose(1, 2)   # tensor[1,10,10,1] alive变为列向量
+        agent_mask_transpose = agent_mask.transpose(1, 2)   # tensor[1,10,10,1]
 
         for i in range(self.comm_passes):
+            
+            ########## 先由 h得到 c
             # Choose current or prev depending on recurrent
             comm = hidden_state.view(batch_size, n, self.hid_size) if self.args.recurrent else hidden_state # [10,128] --> [1,10,128]
 
@@ -194,23 +200,23 @@ class CommNetMLP(nn.Module):
 
             # Mask comm_in
             # Mask communcation <from dead agents>
-            comm = comm * agent_mask
+            comm = comm * dead_senters
             # Mask communication <to dead agents>
             comm = comm * agent_mask_transpose
 
             # Combine all of C_j for an ith agent which essentially are h_j
             comm_sum = comm.sum(dim=1)  # [1,10,10,128] --> [1,10,128]
             c = self.C_modules[i](comm_sum)
-
+            ##########
 
             if self.args.recurrent:
                 # skip connection - combine comm. matrix and encoded input for all agents
                 inp = x + c
 
-                inp = inp.view(batch_size * n, self.hid_size)
+                inp = inp.view(batch_size * n, self.hid_size)   # [10, 128]
                 
                 # 估计LSTM自带非线性函数，所以这里就不用手动添加了
-                output = self.f_module(inp, (hidden_state, cell_state))
+                output = self.f_module(inp, (hidden_state, cell_state)) # LSTM
 
                 hidden_state = output[0]
                 cell_state = output[1]
