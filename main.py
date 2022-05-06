@@ -161,7 +161,7 @@ if args.seed == -1:
     args.seed = np.random.randint(0,10000)
 torch.manual_seed(args.seed)
 
-res_file = open('test_result.txt', mode='w')
+res_file = open('test_result.txt', mode='a+')
 print(args)
 '''
 Namespace(action_scale=1.0, add_rate_max=0.05, add_rate_min=0.2, advantages_per_action=False, batch_size=500, comm_action_one=False, comm_init='uniform', comm_mask_zero=False, comm_mode='avg', comm_passes=1, commnet=True, continuous=False, curr_end=1250.0, curr_start=250.0, detach_gap=10, difficulty='medium', dim=14, dim_actions=1, display=False, entr=0, env_name='traffic_junction', epoch_size=10, gamma=1.0, hard_attn=False, hid_size=128, ic3net=False, load='', lrate=0.001, max_steps=40, mean_ratio=1.0, naction_heads=[2], nactions='1', nagents=10, nfriendly=10, normalize_rewards=False, nprocesses=1, num_actions=[2], num_epochs=2000, num_inputs=61, plot=False, plot_env='main', random=False, recurrent=True, rnn_type='LSTM', save='', save_every=0, 
