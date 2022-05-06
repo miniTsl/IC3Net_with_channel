@@ -6,7 +6,7 @@ class Channel:
     Communication channel class
     '''
     def __init__(self) -> None:
-        self.comm_pahse = 80    # length of commu phase, each time slot counts 1
+        self.comm_pahse = 60    # length of commu phase, each time slot counts 1
         # self.DIFS = 3
         # self.EIFS = 3
         self.windows = {}
