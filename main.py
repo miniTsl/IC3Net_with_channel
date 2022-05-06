@@ -246,7 +246,7 @@ def run(num_epochs):
             res_file.write('\nAdd-Rate: {:.2f}'.format(stat['add_rate']))
         if 'success' in stat.keys():
             print('Success: {:.5f}'.format(stat['success']))
-            res_file.write('\nSuccess: {:.5f}'.format(stat['success']))
+            res_file.write('\nSuccess: {:.5f}\n'.format(stat['success']))
         # if 'steps_taken' in stat.keys():
         #     print('\nSteps-taken: {:.2f}'.format(stat['steps_taken']))
         #     res_file.write('Steps-taken: {:.2f}'.format(stat['steps_taken']))
