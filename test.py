@@ -58,3 +58,11 @@ def loopfunction():
         x -= 1
         return 100
 print(loopfunction())
+
+a = []
+for x in range(10):
+    b = []
+    for y in range(5):
+        b.append(y)
+    a.extend(b)
+print(a)
