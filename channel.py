@@ -13,28 +13,33 @@ class Channel:
         self.frame_slots = 10
         
     def send(self, agent_mask):
+        '''
+        input:
+            agent_mask: numpy array([10,]), i.e. info['alive_mask']
+        output:
+            senters: an array like agent_mask, but set failed agents silent
+            sent: list of indexes of alive agents in input that will send messages successfully
+            failed: list of indexes of alive agents in input that will fail to send messages
+        '''
         self.alive_index = (np.nonzero(agent_mask.squeeze())[0]).tolist()  # np.nonzero() returns a tuple of indexes of nonzero elements on each dimension
-        # we hope np.array --> list
-        if len(self.alive_index) == 0:
+        # we hope np.array --> list of nonzero element positions
+        if len(self.alive_index) == 0:  # all dead
             return agent_mask.copy(), [], []
         else:
-            self.comm_pahse = 60
-            self.windows.clear()
+            self.windows.clear()    # clear windows
             for x in self.alive_index:
                 self.windows[x] = 3     # initial window width: 3
             sent, failed = self.step()
-            dead_senter = agent_mask.copy()    # numpy array
+            senters = agent_mask.copy()    # numpy array
             for x in failed:
-                dead_senter[x] = 0 # set who_failed slinet so that they are dead
-            return dead_senter, sent, failed
+                senters[x] = 0 # set who_failed slinet so that they are dead
+            return senters, sent, failed
     
     def step(self):
         '''
-        input:
-            n_agent: number of agents to send info
         output:
-            who_sent: which agents succeeded
-            who_failed: which agents failed
+            who_sent: list of indexes of agents in self.windows that will send messages successfully
+            who_failed: list of indexes of agents in self.windows that will fail to send messages
         '''
         phase = self.comm_pahse
         not_sent_yet = self.alive_index.copy()
@@ -47,7 +52,7 @@ class Channel:
                 break 
             else:
                 min_wait = min(waits.values())
-                if phase < (min_wait+ self.frame_slots):    # there is not enough time to transmit another message
+                if phase < (min_wait + self.frame_slots):    # there is not enough time to transmit another message
                     break
                 else:
                     phase -= (min_wait + self.frame_slots)
@@ -56,11 +61,11 @@ class Channel:
                         for key in waits.keys():
                             if waits[key] == min_wait:
                                 to_del = key
-                                not_sent_yet.remove(key)    # agent key is sent
+                                not_sent_yet.remove(key)    # agent key has sent
                                 who_sent.append(key)
                             else:
                                 waits[key] -= min_wait
-                        del waits[to_del]   # agent key is sent
+                        del waits[to_del]   # agent key has sent
                     
                     else:   # collision happens
                         to_change = []
@@ -75,4 +80,4 @@ class Channel:
         if len(not_sent_yet) == 0:
             return who_sent, []
         else:
-            return who_sent, list(set(self.alive_index) - set(who_sent))
+            return who_sent, list(set(self.alive_index) - set(who_sent))    # difference set

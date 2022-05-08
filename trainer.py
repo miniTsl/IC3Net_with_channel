@@ -25,15 +25,15 @@ class Trainer(object):
 
     def get_episode(self, epoch):
         episode = []
+        
         # Get the names and default values of a function's parameters.
         reset_args = getargspec(self.env.reset).args
         
         # episode初始化
         if 'epoch' in reset_args:
-            state = self.env.reset(epoch)
+            state = self.env.reset(epoch)   # state: [1, 10, 61]
         else:
             state = self.env.reset()
-        # state的shape：torch.Size([1, 10, 61])
         
         should_display = self.display and self.last_step
 
@@ -43,18 +43,20 @@ class Trainer(object):
         info = dict()
         switch_t = -1
 
-        prev_hid = torch.zeros(1, self.args.nagents, self.args.hid_size)
+        prev_hid = torch.zeros(1, self.args.nagents, self.args.hid_size)    # [1,10,128]
 
         for t in range(self.args.max_steps):
             misc = dict()
+            
             if t == 0 and self.args.hard_attn and self.args.commnet:
                 info['comm_action'] = np.zeros(self.args.nagents, dtype=int)
 
             # recurrence over time
             if self.args.recurrent:
                 if self.args.rnn_type == 'LSTM' and t == 0:
-                    prev_hid = self.policy_net.init_hidden(batch_size=state.shape[0])
-
+                    prev_hid = self.policy_net.init_hidden(batch_size=state.shape[0])   # batch_size = 1
+                    # ([10,128], [10,128]), full of zero, [prev_hidden, prev_cell]
+                
                 x = [state, prev_hid]
                 action_out, value, prev_hid = self.policy_net(x, info)
 
@@ -70,7 +72,11 @@ class Trainer(object):
             action = select_action(self.args, action_out)
             action, actual = translate_action(self.args, self.env, action)
             next_state, reward, done, info = self.env.step(actual)
-
+            # next_state: [1, 10, 61]
+            # reward: (10,)
+            # done: bool
+            # info: dic
+                    
             # store comm_action in info for next step
             if self.args.hard_attn and self.args.commnet:
                 info['comm_action'] = action[-1] if not self.args.comm_action_one else np.ones(self.args.nagents, dtype=int)
@@ -78,7 +84,6 @@ class Trainer(object):
                 stat['comm_action'] = stat.get('comm_action', 0) + info['comm_action'][:self.args.nfriendly]
                 if hasattr(self.args, 'enemy_comm') and self.args.enemy_comm:
                     stat['enemy_comm']  = stat.get('enemy_comm', 0)  + info['comm_action'][self.args.nfriendly:]
-
 
             if 'alive_mask' in info:
                 misc['alive_mask'] = info['alive_mask'].reshape(reward.shape)
@@ -88,7 +93,8 @@ class Trainer(object):
             # env should handle this make sure that reward for dead agents is not counted
             # reward = reward * misc['alive_mask']
 
-            stat['reward'] = stat.get('reward', 0) + reward[:self.args.nfriendly]
+            stat['reward'] = stat.get('reward', 0) + reward[:self.args.nfriendly]   # add rewards up
+            # D.get(k[,d]) -> D[k] if k in D, else d. d defaults to None.
             if hasattr(self.args, 'enemy_comm') and self.args.enemy_comm:
                 stat['enemy_reward'] = stat.get('enemy_reward', 0) + reward[self.args.nfriendly:]
 
@@ -107,7 +113,10 @@ class Trainer(object):
                 self.env.display()
 
             trans = Transition(state, action, action_out, value, episode_mask, episode_mini_mask, next_state, reward, misc)
+            # action_out: [1,10,2]
+            # value: [10,1]
             episode.append(trans)
+            
             state = next_state
             if done:
                 break
@@ -132,18 +141,25 @@ class Trainer(object):
         return (episode, stat)
 
     def compute_grad(self, batch):
+        '''
+        input:
+            batch: a single Transition but each named element is a tuple filled with all corresponding elemtns from each Transition in batch from get_episode()
+        output:
+            stat: a dictionary that contains action_loss, value_loss, entropy
+        what's done in this function: compute loss and let loss backward~
+        '''
         stat = dict()
-        num_actions = self.args.num_actions
-        dim_actions = self.args.dim_actions
+        num_actions = self.args.num_actions # [2]
+        dim_actions = self.args.dim_actions # 1
 
-        n = self.args.nagents
-        batch_size = len(batch.state)
+        n = self.args.nagents   # 10
+        batch_size = len(batch.state)   # 520
 
         rewards = torch.Tensor(batch.reward)
         episode_masks = torch.Tensor(batch.episode_mask)
         episode_mini_masks = torch.Tensor(batch.episode_mini_mask)
         actions = torch.Tensor(batch.action)
-        actions = actions.transpose(1, 2).view(-1, n, dim_actions)
+        actions = actions.transpose(1, 2).view(-1, n, dim_actions)  # [520, 10, 1]
 
         # old_actions = torch.Tensor(np.concatenate(batch.action, 0))
         # old_actions = old_actions.view(-1, n, dim_actions)
@@ -153,9 +169,9 @@ class Trainer(object):
         values = torch.cat(batch.value, dim=0)
         action_out = list(zip(*batch.action_out))
         action_out = [torch.cat(a, dim=0) for a in action_out]
-
+        # misc中就只有alive_mask
         alive_masks = torch.Tensor(np.concatenate([item['alive_mask'] for item in batch.misc])).view(-1)
-
+        # alive_masks：torch.Size([5200])
         coop_returns = torch.Tensor(batch_size, n)
         ncoop_returns = torch.Tensor(batch_size, n)
         returns = torch.Tensor(batch_size, n)
@@ -231,14 +247,16 @@ class Trainer(object):
         return stat
 
     def run_batch(self, epoch):
-        batch = []  # list of list
+        batch = []  # list of Transition
         self.stats = dict()
         self.stats['num_episodes'] = 0
         while len(batch) < self.args.batch_size:
             if self.args.batch_size - len(batch) <= self.args.max_steps:
                 self.last_step = True
-            episode, episode_stat = self.get_episode(epoch)
+            episode, episode_stat = self.get_episode(epoch) # episode中全是Transition
+            # episode_stat中包含每个episode的步数num_steps40、steps_taken40、总rewards
             merge_stat(episode_stat, self.stats)
+            # self.stats中包含500步内的总步数（500）、steps_taken（500）、总rewards
             self.stats['num_episodes'] += 1
             batch += episode
 
@@ -249,17 +267,18 @@ class Trainer(object):
 
     # only used when nprocesses=1
     def train_batch(self, epoch):
-        batch, stat = self.run_batch(epoch)
+        batch, stat = self.run_batch(epoch) 
+        # batch is a single Transition but each named element is a tuple filled with all corresponding elemtns from each Transition in batch
         self.optimizer.zero_grad()
 
         s = self.compute_grad(batch)
         merge_stat(s, stat)
         for p in self.params:
             if p._grad is not None:
-                p._grad.data /= stat['num_steps']
+                p._grad.data /= stat['num_steps']   # 最后stat['num_steps'] = 500
         self.optimizer.step()
 
-        return stat
+        return stat # the information for an entire batch_size = 500
 
     def state_dict(self):
         return self.optimizer.state_dict()
