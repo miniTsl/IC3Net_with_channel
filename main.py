@@ -195,12 +195,14 @@ def disp():
     x = disp_trainer.get_episode()
 
 log = dict()
+# LogField = namedtuple('LogField', ('data', 'plot', 'x_axis', 'divide_by'))
 log['epoch'] = LogField(list(), False, None, None)
 log['reward'] = LogField(list(), True, 'epoch', 'num_episodes')
 log['enemy_reward'] = LogField(list(), True, 'epoch', 'num_episodes')
 log['success'] = LogField(list(), True, 'epoch', 'num_episodes')
 log['steps_taken'] = LogField(list(), True, 'epoch', 'num_episodes')
 log['add_rate'] = LogField(list(), True, 'epoch', 'num_episodes')
+
 log['comm_action'] = LogField(list(), True, 'epoch', 'num_steps')
 log['enemy_comm'] = LogField(list(), True, 'epoch', 'num_steps')
 log['value_loss'] = LogField(list(), True, 'epoch', 'num_steps')
@@ -209,7 +211,6 @@ log['entropy'] = LogField(list(), True, 'epoch', 'num_steps')
 
 if args.plot:
     vis = visdom.Visdom(env=args.plot_env)
-
 
 def run(num_epochs):
     for ep in range(num_epochs):
@@ -262,7 +263,8 @@ def run(num_epochs):
                 if v.plot and len(v.data) > 0:
                     vis.line(np.asarray(v.data), np.asarray(log[v.x_axis].data[-len(v.data):]),
                     win=k, opts=dict(xlabel=v.x_axis, ylabel=k))
-
+        
+        # save: false
         if args.save_every and ep and args.save != '' and ep % args.save_every == 0:
             # fname, ext = args.save.split('.')
             # save(fname + '_' + str(ep) + '.' + ext)
@@ -270,7 +272,6 @@ def run(num_epochs):
 
         if args.save != '':
             save(args.save)
-
 
 def save(path):
     d = dict()
@@ -298,7 +299,6 @@ if args.load != '':
     load(args.load)
 
 run(args.num_epochs)
-
 res_file.close()
 
 if args.display:

@@ -10,7 +10,6 @@ from action_utils import *
 Transition = namedtuple('Transition', ('state', 'action', 'action_out', 'value', 'episode_mask', 'episode_mini_mask', 'next_state',
                                        'reward', 'misc'))
 
-
 class Trainer(object):
     def __init__(self, args, policy_net, env):
         self.args = args
@@ -24,6 +23,21 @@ class Trainer(object):
         self.params = [p for p in self.policy_net.parameters()]
 
     def get_episode(self, epoch):
+        '''
+        input:epoch
+        
+        output:
+            episode: a list of Transitions \n
+            stat: a dict:
+                    {
+                        'reward':array([  0.  ,  -1.2 , -12.56,   0.  ,   0.  ,   0.  ,   0.  , -11.9 ,
+                                0.  ,   0.  ])
+                        'num_steps':40
+                        'steps_taken':40
+                        'success':0
+                        'add_rate':0.02
+                    }
+        '''
         episode = []
         
         # Get the names and default values of a function's parameters.
@@ -121,7 +135,7 @@ class Trainer(object):
             if done:
                 break
         
-        stat['num_steps'] = t + 1   # 就是batch_size = 500
+        stat['num_steps'] = t + 1   # 就是max_steps=40
         stat['steps_taken'] = stat['num_steps']
 
         if hasattr(self.env, 'reward_terminal'):
@@ -135,7 +149,7 @@ class Trainer(object):
             if hasattr(self.args, 'enemy_comm') and self.args.enemy_comm:
                 stat['enemy_reward'] = stat.get('enemy_reward', 0) + reward[self.args.nfriendly:]
 
-
+        # 这里获得success
         if hasattr(self.env, 'get_stat'):
             merge_stat(self.env.get_stat(), stat)
         return (episode, stat)
@@ -247,7 +261,23 @@ class Trainer(object):
         return stat
 
     def run_batch(self, epoch):
-        batch = []  # list of Transition
+        '''
+        input: epoch
+        output:
+            batch: list of Transitions from every step in batch_size = 500
+            states: a dict
+                {
+                    
+                    'num_episodes':13
+                    'reward':array([ -57.08,   -6.48,  -66.39, -132.6 ,   -5.61,   -4.83, -109.06,
+                            -0.78,   -9.72,  -63.81])
+                    'num_steps':520
+                    'steps_taken':520
+                    'success':9
+                    'add_rate':0.25999999999999995
+                }
+        '''
+        batch = []  # list of Transitions ffrom
         self.stats = dict()
         self.stats['num_episodes'] = 0
         while len(batch) < self.args.batch_size:
@@ -256,19 +286,37 @@ class Trainer(object):
             episode, episode_stat = self.get_episode(epoch) # episode中全是Transition
             # episode_stat中包含每个episode的步数num_steps40、steps_taken40、总rewards
             merge_stat(episode_stat, self.stats)
-            # self.stats中包含500步内的总步数（500）、steps_taken（500）、总rewards
+            # self.stats中包含500步内的总步数（520）、steps_taken（500）、总rewards
             self.stats['num_episodes'] += 1
             batch += episode
 
         self.last_step = False
-        self.stats['num_steps'] = len(batch)    # 一个batch的总步数,显然就是batch_size:500
+        self.stats['num_steps'] = len(batch)    # 一个batch的总步数,其实是520
         batch = Transition(*zip(*batch))
         return batch, self.stats
 
     # only used when nprocesses=1
     def train_batch(self, epoch):
+        '''
+        input:
+            epoch
+        output:
+            stat: a dict.
+                {
+                    'num_episodes':13
+                    'reward':array([ -2.83,  -5.51,  -4.41, -21.34,  -4.55,  -2.13,  -1.77,  -3.62,
+                        -17.14,  -3.81])
+                    'num_steps':520
+                    'steps_taken':520
+                    'success':12
+                    'add_rate':0.25999999999999995
+                    'action_loss':201.7538625441944
+                    'value_loss':407.09509556341595
+                    'entropy':3299.564348539202
+                }
+        '''
         batch, stat = self.run_batch(epoch) 
-        # batch is a single Transition but each named element is a tuple filled with all corresponding elemtns from each Transition in batch
+        # batch is a single Transition but each named element is a tuple filled with all corresponding elemtns from each Transition in the 'batch' from get_episode()
         self.optimizer.zero_grad()
 
         s = self.compute_grad(batch)

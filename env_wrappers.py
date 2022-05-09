@@ -105,7 +105,8 @@ class GymWrapper(object):
 
     def get_stat(self):
         if hasattr(self.env, 'stat'):
-            self.env.stat.pop('steps_taken', None)
+            self.env.stat.pop('steps_taken', None)  # pop(key[,default]): 删除字典键 key 和其对应的值
+            # stat: 'success'; 'add_rate'
             return self.env.stat
         else:
             return dict()
